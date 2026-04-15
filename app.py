@@ -65,14 +65,19 @@ with col1:
 with col2:
     job_desc = st.text_area("💼 Paste Job Description")
 
-# ---------- PDF READER ----------
+# ---------- SAFE PDF READER ----------
 def read_pdf(file):
-    reader = PyPDF2.PdfReader(file)
-    text = ""
-    for page in reader.pages:
-        if page.extract_text():
-            text += page.extract_text()
-    return text
+    if file is None:
+        return ""
+    try:
+        reader = PyPDF2.PdfReader(file)
+        text = ""
+        for page in reader.pages:
+            if page.extract_text():
+                text += page.extract_text()
+        return text
+    except:
+        return ""
 
 # ---------- CLEAN TEXT ----------
 def clean_text(text):
@@ -96,13 +101,11 @@ def analyze(resume_text, job_desc):
 
     keyword_score = int((len(matched) / len(job_words)) * 100) if job_words else 0
 
-    # ✅ FIXED: no negative values
+    # SAFE SCORE FIX
     experience_score = max(0, min(100, keyword_score - 10))
-
-    # ✅ FIXED: safe overall score
     overall_score = max(0, min(100, int((keyword_score + experience_score) / 2)))
 
-    # Job fit category
+    # FIT CATEGORY
     if overall_score >= 80:
         fit = "🔥 Strong Match"
     elif overall_score >= 50:
@@ -122,13 +125,18 @@ def analyze(resume_text, job_desc):
 # ---------- BUTTON ----------
 if st.button("🔍 Analyze Resume"):
 
-    if resume_file and job_desc:
+    if resume_file is None:
+        st.warning("⚠️ Please upload a resume first")
 
+    elif not job_desc.strip():
+        st.warning("⚠️ Please enter job description")
+
+    else:
         with st.spinner("Analyzing your resume... ⏳"):
             resume_text = read_pdf(resume_file)
             result = analyze(resume_text, job_desc)
 
-        # ---------- SAFE PROGRESS ----------
+        # SAFE PROGRESS
         progress_value = max(0.0, min(1.0, result["overall_score"] / 100))
 
         st.markdown("## 📊 Overall Match Score")
@@ -136,16 +144,17 @@ if st.button("🔍 Analyze Resume"):
         st.markdown(f"### {result['overall_score']}%")
         st.markdown(f"### {result['fit']}")
 
-        # ---------- BREAKDOWN ----------
+        # BREAKDOWN
         st.markdown("## 📈 Score Breakdown")
         col1, col2 = st.columns(2)
 
         with col1:
             st.metric("🧠 Keyword Match", f"{result['keyword_score']}%")
+
         with col2:
             st.metric("💼 Experience Match", f"{result['experience_score']}%")
 
-        # ---------- SKILLS ----------
+        # SKILLS
         col1, col2 = st.columns(2)
 
         with col1:
@@ -160,12 +169,9 @@ if st.button("🔍 Analyze Resume"):
             st.write(", ".join(result["missing"]) or "None")
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # ---------- SUGGESTIONS ----------
+        # SUGGESTIONS
         st.markdown("## 💡 Suggested Skills to Add")
         for skill in result["missing"]:
             st.write(f"👉 {skill}")
 
         st.success("Analysis Complete ✅")
-
-    else:
-        st.warning("⚠️ Please upload resume and enter job description")
