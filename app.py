@@ -5,15 +5,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 from io import BytesIO
 
-# OPTIONAL AI (safe fallback if not used)
-try:
-    from openai import OpenAI
-    client = OpenAI(api_key="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")  # optional
-except:
-    client = None
-
 # ---------- PAGE CONFIG ----------
-st.set_page_config(page_title="AI Resume Matcher", layout="wide")
+st.set_page_config(page_title="AI Resume Matcher Pro", layout="wide")
 
 # ---------- UI ----------
 st.markdown("""
@@ -37,19 +30,32 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ---------- HEADER ----------
 st.markdown("""
 <div class="card">
-    <h1>🚀 AI Resume Matcher</h1>
-    <p>Smart resume analysis with AI insights</p>
+    <h1>🚀 AI Resume Matcher Pro</h1>
+    <p>Upload resume → analyze → improve → get job insights</p>
 </div>
 """, unsafe_allow_html=True)
 
+# ---------- SAMPLE JD ----------
+sample_jd = """
+Looking for a Python Developer with experience in APIs, SQL, and data analysis.
+Should have knowledge of cloud platforms and problem-solving skills.
+"""
+
+if st.button("✨ Use Sample Job Description"):
+    st.session_state["jd"] = sample_jd
+
 # ---------- INPUT ----------
 col1, col2 = st.columns(2)
+
 with col1:
     resume_file = st.file_uploader("📄 Upload Resume (PDF)")
+    resume_text_input = st.text_area("✍️ Or paste resume text (Demo mode)")
+
 with col2:
-    job_desc = st.text_area("💼 Paste Job Description")
+    job_desc = st.text_area("💼 Paste Job Description", value=st.session_state.get("jd", ""))
 
 # ---------- PDF ----------
 def read_pdf(file):
@@ -71,7 +77,7 @@ def clean_text(text):
     stopwords = {"the","and","for","with","you","are","this","that","have","your"}
     return set([w for w in words if w not in stopwords])
 
-# ---------- ANALYSIS (WEIGHTED) ----------
+# ---------- ANALYSIS ----------
 def analyze(resume_text, job_desc):
     resume_words = clean_text(resume_text)
     job_words = clean_text(job_desc)
@@ -81,8 +87,6 @@ def analyze(resume_text, job_desc):
 
     keyword_score = int((len(matched) / len(job_words)) * 100) if job_words else 0
     experience_score = max(0, min(100, keyword_score - 10))
-
-    # 🎯 Weighted scoring
     overall_score = int((0.6 * keyword_score) + (0.4 * experience_score))
 
     if overall_score >= 80:
@@ -101,24 +105,26 @@ def analyze(resume_text, job_desc):
         "missing": list(missing)[:10]
     }
 
-# ---------- AI SUGGESTIONS ----------
-def ai_suggestions(resume_text, job_desc):
-    if client is None:
-        return ["Add more relevant skills", "Improve formatting", "Highlight achievements"]
+# ---------- JOB ROLE RECOMMENDER ----------
+def recommend_roles(skills):
+    roles = []
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": f"Suggest 3 improvements for this resume:\n{resume_text}\n\nJob:\n{job_desc}"
-            }]
-        )
-        return response.choices[0].message.content.split("\n")
-    except:
-        return ["AI suggestion unavailable"]
+    if "python" in skills or "data" in skills:
+        roles.append("Data Analyst")
+    if "sql" in skills:
+        roles.append("Database Developer")
+    if "api" in skills:
+        roles.append("Backend Developer")
+    if "cloud" in skills:
+        roles.append("Cloud Engineer")
 
-# ---------- PDF GENERATION ----------
+    return roles if roles else ["General Software Engineer"]
+
+# ---------- BULLET GENERATOR ----------
+def improve_bullet(text):
+    return f"✔ Improved: {text.capitalize()} with measurable impact and action-driven language."
+
+# ---------- PDF ----------
 def generate_pdf(result):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer)
@@ -135,44 +141,68 @@ def generate_pdf(result):
     buffer.seek(0)
     return buffer
 
-# ---------- BUTTON ----------
+# ---------- ANALYZE BUTTON ----------
 if st.button("🔍 Analyze Resume"):
 
-    if resume_file is None:
-        st.warning("Upload resume")
-    elif not job_desc.strip():
-        st.warning("Enter job description")
-    else:
+    resume_text = ""
+
+    if resume_file:
         resume_text = read_pdf(resume_file)
-        result = analyze(resume_text, job_desc)
+    elif resume_text_input.strip():
+        resume_text = resume_text_input
+    else:
+        st.warning("⚠️ Upload resume or paste text")
+        st.stop()
 
-        st.progress(result["overall_score"] / 100)
-        st.markdown(f"### {result['overall_score']}% - {result['fit']}")
+    if not job_desc.strip():
+        st.warning("⚠️ Enter job description")
+        st.stop()
 
-        st.metric("Keyword Match", f"{result['keyword_score']}%")
-        st.metric("Experience Match", f"{result['experience_score']}%")
+    result = analyze(resume_text, job_desc)
 
-        col1, col2 = st.columns(2)
+    st.progress(result["overall_score"] / 100)
+    st.markdown(f"### {result['overall_score']}% - {result['fit']}")
 
-        with col1:
-            st.markdown("### ✅ Matched Skills")
-            st.write(result["matched"])
+    st.metric("🧠 Keyword Match", f"{result['keyword_score']}%")
+    st.metric("💼 Experience Match", f"{result['experience_score']}%")
 
-        with col2:
-            st.markdown("### ❌ Missing Skills")
-            st.write(result["missing"])
+    col1, col2 = st.columns(2)
 
-        # 🤖 AI Suggestions
-        st.markdown("## 🤖 AI Suggestions")
-        suggestions = ai_suggestions(resume_text, job_desc)
-        for s in suggestions:
-            st.write(f"👉 {s}")
+    with col1:
+        st.markdown("### ✅ Matched Skills")
+        st.write(result["matched"])
 
-        # 📄 PDF Download
-        pdf = generate_pdf(result)
-        st.download_button(
-            label="📄 Download Report",
-            data=pdf,
-            file_name="resume_report.pdf",
-            mime="application/pdf"
-        )
+    with col2:
+        st.markdown("### ❌ Missing Skills")
+        st.write(result["missing"])
+
+    # ---------- JOB ROLES ----------
+    st.markdown("## 🎯 Recommended Roles")
+    roles = recommend_roles(result["matched"])
+    for r in roles:
+        st.write(f"👉 {r}")
+
+    # ---------- BULLET GENERATOR ----------
+    st.markdown("## ✍️ Improve Resume Bullet")
+    user_bullet = st.text_input("Enter your resume bullet")
+
+    if st.button("✨ Improve Bullet"):
+        if user_bullet:
+            improved = improve_bullet(user_bullet)
+            st.success(improved)
+        else:
+            st.warning("Enter a bullet point")
+
+    # ---------- SUGGESTIONS ----------
+    st.markdown("## 💡 Suggestions")
+    for skill in result["missing"]:
+        st.write(f"👉 Add {skill}")
+
+    # ---------- DOWNLOAD ----------
+    pdf = generate_pdf(result)
+    st.download_button(
+        label="📄 Download Report",
+        data=pdf,
+        file_name="resume_report.pdf",
+        mime="application/pdf"
+    )
